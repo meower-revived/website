@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Meower | GitHub Login</title>
+    <link rel="stylesheet" href="/styles.css">
+    <link rel="stylesheet" href="/fonts.css">
+    <link rel="icon" href="/images/assets/meowy.svg">
+    <link rel="canonical" href="https://meower.org">
+    <link rel="apple-touch-icon" sizes="512x512" href="/images/assets/safari-touch-512.png">
+    <meta name="theme-color" content="#181818">
+    <meta name="background-color" content="#181818">
+</head>
+<body>
+    <div class="page">
+        <div class="hero">
+            <div class="hero-header">
+                <div class="header-logo">
+                    <a href="/">
+                        <img src="/images/meowerlogo-white.svg" width="200px" alt="meower">
+                        <span style="display: none;">Meower</span>
+                    </a>
+                </div>
+                <div class="header-links">
+                    <a class="header-link" href="https://app.meower.org"><img src="/images/icons/rocket.svg" width="20px" alt="icon"><span>Launch</span></a>
+                    <a class="header-link" href="/about"><img src="/images/icons/help-circle.svg" width="20px" alt="icon"><span>About</span></a>
+                    <a class="header-link" href="/legal"><img src="/images/icons/scale.svg" width="20px" alt="icon"><span>Legal</span></a>
+                    <a class="header-link" href="https://github.com/meower-media" target="_blank"><img src="/images/icons/github.svg" width="20px" alt="icon"><span>Github</span></a>
+                </div>
+            </div>
+        </div>
+        <div class="main">
+            <div class="discord-sec" style="--border: #4999d6">
+                <form id="set-username" style="display: none;">
+                    <span class="span-header">Welcome to Meower!</span>
+                    <span>To finish creating a Meower account, you must create a unique username for it. This is how other Meower users will identify you. Note that you cannot change your username after creating your account!</span>
+                    <label for="username">Username</label>
+                    <input class="input" type="text" id="username">
+                    <button class="button" type="submit">Set Username</button>
+                </form>
+                <h4 id="status"></h4>
+            </div>
+        </div>
+        <div class="footer">
+            <div class="footer-logo">
+                <a href="/">
+                    <img src="/images/meowerlogo-white.svg" width="200px" alt="meower">
+                    <span style="display: none;">Meower</span>
+                </a>
+                <span>© 2020 - 2025 Meower Media </span>
+            </div>
+            <div class="footer-links">
+                <div class="link-sec">
+                    <span class="span-h3">Developers</span>
+                    <a href="https://docs.meower.org/" target="_blank">Docs</a>
+                    <a href="https://github.com/meower-media" target="_blank">Github</a>
+                    <a href="https://status.meower.org/" target="_blank">Status</a>
+                    <a href="https://github.com/MikeDev101/cloudlink" target="_blank">CloudLink</a>
+                    <a href="https://github.com/meower-media/api-client" target="_blank">api-client</a>
+                </div>
+                <div class="link-sec">
+                    <span class="span-h3">App</span>
+                    <a href="/">Homepage</a>
+                    <a href="/about">About</a>
+                    <a href="/legal">Legal</a>
+                    <a href="/export">Data Export</a>
+                    <a href="mailto:support@meower.org">Contact</a>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script>
+        const allowedOrigins = ["http://127.0.0.1:8000", "http://127.0.0.1:5173", "https://app.meower.org", "https://meo.meower.org"];
+
+        let registrationToken;
+
+        function redirectGH() {
+            const status = document.getElementById("status");
+            status.innerText = "Redirecting to GitHub...";
+            window.location.replace("https://github.com/login/oauth/authorize?client_id=Ov23lizAXSzheOfYH2d3");
+        }
+
+        document.addEventListener("DOMContentLoaded", () => {
+            const status = document.getElementById("status");
+            if (!window.opener) {
+                status.innerText = "This window was not opened by an approved origin!";
+                return;
+            }
+            window.opener.postMessage({ type: "ready" }, "*");
+        });
+
+        window.addEventListener("message", async (ev) => {
+            if (ev.data.type !== "start-oauth") return;
+
+            const status = document.getElementById("status");
+
+            // make sure the origin that opened this window is allowed
+            if (!allowedOrigins.some(origin => origin === ev.origin)) {
+                status.innerText = "The OAuth request was not sent by an approved origin!";
+                return;
+            }
+
+            // get code from GitHub
+            const urlParams = new URLSearchParams(window.location.search);
+            const code = urlParams.get("code");
+            if (!code) {
+                redirectGH();
+                return;
+            }
+
+            // continue login
+            status.innerText = "Logging in to Meower...";
+            const resp = await fetch("https://api.meower.org/auth/oauth/github", {
+                method: "POST",
+                headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+                body: JSON.stringify({ code }),
+            });
+            const respJson = await resp.json();
+
+            if (!resp.ok || respJson.error) {
+                if (respJson.type === "Unauthorized") {
+                    redirectGH();
+                } else if (respJson.type === "registrationRequired") {
+                    status.innerText = "";
+
+                    registrationToken = respJson.token;
+
+                    const setUsernameForm = document.getElementById("set-username");
+                    setUsernameForm.style.display = "";
+                } else if (respJson.type === "accountDeleted") {
+                    status.innerText = "This Meower account has been deleted. You can no longer log in.";
+                } else {
+                    status.innerText = `We were unable to log you in at this time! Please try again later. Error: ${respJson.type}`;
+                }
+                return;
+            }
+
+            window.opener.postMessage({ type: "finish-oauth", account: respJson.account, token: respJson.token }, "*");
+        });
+
+        document.getElementById("set-username").addEventListener("submit", async (ev) => {
+            ev.preventDefault();
+
+            const setUsernameForm = document.getElementById("set-username");
+            setUsernameForm.style.display = "none";
+
+            const status = document.getElementById("status");
+            status.innerText = "Setting username...";
+
+            const resp = await fetch("https://api.meower.org/auth/oauth/github/register", {
+                method: "POST",
+                headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+                body: JSON.stringify({ token: registrationToken, username: ev.target[0].value }),
+            });
+            const respJson = await resp.json();
+
+            if (!resp.ok || respJson.error) {
+                if (respJson.type === "usernameExists") {
+                    status.innerText = "That username is already taken!";
+                    setUsernameForm.style.display = "";
+                } else if (respJson.type === "registrationBlocked") {
+                    status.innerText = "Your IP address has been blocked from creating new accounts. You cannot create a new account at this time.";
+                } else {
+                    status.innerText = `We were unable to create your account! Please try again later. Error: ${respJson.type}`;
+                }
+                return;
+            }
+
+            window.opener.postMessage({ type: "finish-oauth", account: respJson.account, token: respJson.token }, "*");
+        });
+    </script>
+</body>
+</html>
